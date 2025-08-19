@@ -1,0 +1,630 @@
+---
+title: "WMCortThinningAnalyses"
+author: "ZPC"
+most recent update: "2025-08-19"
+output: html_document
+---
+
+```{r packages}
+library(dplyr)
+library(sjmisc)
+library(sjstats)
+library(psych)
+library(tidyverse)
+library(lme4)
+library(lmerTest)
+library(reshape2)
+library(writexl)
+library(janitor)
+library(rainbow)
+library(tidyr)
+library(EMAtools)
+library(MuMIn)
+library(effectsize)
+library(naniar)
+library(car)
+library(stats)
+library(standardize)
+``` 
+
+```{r gather data}
+#data dictionary and release 5.1 are no longer available. code below reflects the variables, data tables, and timepoints at which they are used
+#ensure that data gathering code always includes src_subject_id & eventname variables! these are used to pull data together in later steps
+
+#BRIEF PROBLEM MONITOR
+  #5.1 data table: mental-health/mh_y_bpm.csv
+  #variable name(s): bpm_y_scr_internal_r --> this is BPM internalizing raw (un-normed) scores 
+  #timepoint(s):  3_year_follow_up_y_arm_1 --> unable to control for baseline symptoms, first administered at 6-month followup 
+
+#CHILD BEHAVIOR CHECKLIST
+  #5.1 data table: mh_p_cbcl.csv
+  #variable name(s): cbcl_scr_syn_internal_r --> this is CBCL internalizing raw (un-normed scores)
+  #timepoint(s): baseline_year_1_arm_1, 3_year_follow_up_y_arm_1
+
+#FAMILY ID AND AGE
+  #5.1 data table: abcd_y_lt.csv
+  #variable name(s): rel_family_id, interview_age --> family ID included as a random effect in LMEs
+  #timepoint(s):baseline_year_1_arm_1, 2_year_follow_up_y_arm_1
+
+#DEMOGRAPHICS
+  #5.1 data table: abcd_p_demo.csv
+  #variable name(s): demo_prim, demo_sex_v2, demo_comb_income_v2, demo_prnt_ed_v2, race_ethnicity, demo_gender_id_v2
+  #timepoint(s): baseline_year_1_arm_1
+  #notes:
+    #recode parent education, where: 
+      #12=some HS, no degree
+      #13 = HS degree or GED
+      #14 = < 1 year college 
+      #15 = > 1 year college, no degree 
+      #16 = associates degree 
+      #17 = bachelors degree
+      #18 = masters degree
+      #19 = professional/doctoral degree
+    #recode race/ethnicity to categorical with white as ref group, where: 
+      #A=white
+      #B=AfricanAmerican/Black 
+      #C=Hispanic
+      #D=Asian/Pacific Islander
+      #E=other
+
+#SCANNER INFO 
+#5.1 data table: mri_y_adm_info.csv
+#variable name(s): baseline_year_1_arm_1
+#timepoint(s): mri_info_deviceserialnumber
+
+#QC 
+#5.1 data table: mri_y_qc_incl.csv
+#variable name(s): imgincl_t1w_include
+#timepoint(s): baseline_year_1_arm_1, 2_year_follow_up_y_arm_1
+
+#CORTICAL -- DESIKAN PARCELLATION
+  #5.1 data table: mri_y_smr_thk_dsk.csv
+  #variable name(s): smri_thick_cdk_meanlh, smri_thick_cdk_meanrh, smri_thick_cdk_mean, smri_thick_cdk_cdmdfrlh, smri_thick_cdk_cdmdfrrh,   smri_thick_cdk_lobfrlh,smri_thick_cdk_lobfrrh, smri_thick_cdk_mobfrlh, smri_thick_cdk_mobfrrh, smri_thick_cdk_rrmdfrlh, smri_thick_cdk_rrmdfrrh, smri_thick_cdk_sufrlh, smri_thick_cdk_sufrrh,smri_thick_cdk_frpolelh, smri_thick_cdk_frpolerh, smri_thick_cdk_parsopclh, smri_thick_cdk_parsopcrh, smri_thick_cdk_parsobislh, smri_thick_cdk_parsobisrh, smri_thick_cdk_parstgrislh, smri_thick_cdk_parstgrisrh, smri_thick_cdk_cdacatelh, smri_thick_cdk_cdacaterh, smri_thick_cdk_rracatelh, smri_thick_cdk_rracaterh, smri_thick_cdk_banksstslh, smri_thick_cdk_cuneuslh, smri_thick_cdk_ehinallh, smri_thick_cdk_fusiformlh, smri_thick_cdk_ifpllh, smri_thick_cdk_iftmlh, smri_thick_cdk_ihcatelh, smri_thick_cdk_locclh, smri_thick_cdk_linguallh, smri_thick_cdk_mdtmlh,smri_thick_cdk_parahpallh, smri_thick_cdk_paracnlh, smri_thick_cdk_pericclh, smri_thick_cdk_postcnlh, smri_thick_cdk_ptcatelh, smri_thick_cdk_precnlh, smri_thick_cdk_pclh, smri_thick_cdk_supllh, smri_thick_cdk_sutmlh, smri_thick_cdk_smlh, smri_thick_cdk_tmpolelh, smri_thick_cdk_trvtmlh, smri_thick_cdk_insulalh, smri_thick_cdk_banksstsrh, smri_thick_cdk_cuneusrh, smri_thick_cdk_ehinalrh, smri_thick_cdk_fusiformrh, smri_thick_cdk_ifplrh, smri_thick_cdk_iftmrh, smri_thick_cdk_ihcaterh, smri_thick_cdk_loccrh, smri_thick_cdk_lingualrh, smri_thick_cdk_mdtmrh,smri_thick_cdk_parahpalrh, smri_thick_cdk_paracnrh, smri_thick_cdk_periccrh, smri_thick_cdk_postcnrh, smri_thick_cdk_ptcaterh, smri_thick_cdk_precnrh, smri_thick_cdk_pcrh, smri_thick_cdk_suplrh, smri_thick_cdk_sutmrh, smri_thick_cdk_smrh, smri_thick_cdk_tmpolerh, smri_thick_cdk_trvtmrh, smri_thick_cdk_insularh
+  #timepoint(s): baseline_year_1_arm_1, 2_year_follow_up_y_arm_1
+
+#mean global, left, and right hemisphere thickness already included in 
+#sum prefrontal and non-prefrontal global regions 
+
+#prefrontal cortex only, both hemispheres  
+pfc_glob = smri_thick_cdk_cdmdfrlh + smri_thick_cdk_cdmdfrrh + smri_thick_cdk_lobfrlh + smri_thick_cdk_lobfrrh + smri_thick_cdk_mobfrlh + smri_thick_cdk_mobfrrh + smri_thick_cdk_rrmdfrlh + smri_thick_cdk_rrmdfrrh + smri_thick_cdk_sufrlh + smri_thick_cdk_sufrrh + smri_thick_cdk_frpolelh + smri_thick_cdk_frpolerh + smri_thick_cdk_parsopclh + smri_thick_cdk_parsopcrh + smri_thick_cdk_parsobislh + smri_thick_cdk_parsobisrh + smri_thick_cdk_parstgrislh + smri_thick_cdk_parstgrisrh + smri_thick_cdk_cdacatelh + smri_thick_cdk_cdacaterh + smri_thick_cdk_rracatelh + smri_thick_cdk_rracaterh
+
+#prefrontal cortex only, left hemisphere
+pfcL = smri_thick_cdk_cdmdfrlh + smri_thick_cdk_lobfrlh +  smri_thick_cdk_mobfrlh + smri_thick_cdk_rrmdfrlh + smri_thick_cdk_sufrlh + smri_thick_cdk_frpolelh + 
+smri_thick_cdk_parsopclh + smri_thick_cdk_parsobislh + smri_thick_cdk_parstgrislh + smri_thick_cdk_cdacatelh + smri_thick_cdk_rracatelh
+
+#prefrontal cortex only, right hemisphere
+pfcR = smri_thick_cdk_cdmdfrrh + smri_thick_cdk_lobfrrh + smri_thick_cdk_mobfrrh + smri_thick_cdk_rrmdfrrh + smri_thick_cdk_sufrrh + smri_thick_cdk_frpolerh +
+smri_thick_cdk_parsopcrh + smri_thick_cdk_parsobisrh + smri_thick_cdk_parstgrisrh + smri_thick_cdk_cdacaterh + smri_thick_cdk_rracaterh
+
+#NON-prefrontal only, both hemispheres  
+NOpfc_glob = smri_thick_cdk_banksstslh + smri_thick_cdk_cuneuslh + smri_thick_cdk_ehinallh +smri_thick_cdk_fusiformlh + smri_thick_cdk_ifpllh + smri_thick_cdk_iftmlh +smri_thick_cdk_ihcatelh +smri_thick_cdk_locclh +smri_thick_cdk_linguallh +smri_thick_cdk_mdtmlh +smri_thick_cdk_parahpallh +smri_thick_cdk_paracnlh +smri_thick_cdk_pericclh +smri_thick_cdk_postcnlh +smri_thick_cdk_ptcatelh +smri_thick_cdk_precnlh +smri_thick_cdk_pclh +smri_thick_cdk_supllh +smri_thick_cdk_sutmlh +smri_thick_cdk_smlh +smri_thick_cdk_tmpolelh +smri_thick_cdk_trvtmlh +smri_thick_cdk_insulalh + smri_thick_cdk_banksstsrh +smri_thick_cdk_cuneusrh +smri_thick_cdk_ehinalrh +smri_thick_cdk_fusiformrh +smri_thick_cdk_ifplrh +smri_thick_cdk_iftmrh +smri_thick_cdk_ihcaterh +smri_thick_cdk_loccrh +smri_thick_cdk_lingualrh +smri_thick_cdk_mdtmrh +smri_thick_cdk_parahpalrh +smri_thick_cdk_paracnrh +smri_thick_cdk_periccrh +smri_thick_cdk_postcnrh +smri_thick_cdk_ptcaterh +smri_thick_cdk_precnrh +smri_thick_cdk_pcrh +smri_thick_cdk_suplrh +smri_thick_cdk_sutmrh +smri_thick_cdk_smrh +smri_thick_cdk_tmpolerh +smri_thick_cdk_trvtmrh +smri_thick_cdk_insularh 
+
+#NON-prefrontal only, left hemisphere
+NOpfcL =  smri_thick_cdk_banksstslh + smri_thick_cdk_cuneuslh + smri_thick_cdk_ehinallh +smri_thick_cdk_fusiformlh + smri_thick_cdk_ifpllh + smri_thick_cdk_iftmlh +smri_thick_cdk_ihcatelh +smri_thick_cdk_locclh +smri_thick_cdk_linguallh +smri_thick_cdk_mdtmlh +smri_thick_cdk_parahpallh +smri_thick_cdk_paracnlh +smri_thick_cdk_pericclh +smri_thick_cdk_postcnlh +smri_thick_cdk_ptcatelh +smri_thick_cdk_precnlh +smri_thick_cdk_pclh +smri_thick_cdk_supllh +smri_thick_cdk_sutmlh +smri_thick_cdk_smlh +smri_thick_cdk_tmpolelh +smri_thick_cdk_trvtmlh +smri_thick_cdk_insulalh
+
+#NON-prefrontal only, right hemisphere
+NOpfcR =  smri_thick_cdk_banksstsrh +smri_thick_cdk_cuneusrh +smri_thick_cdk_ehinalrh +smri_thick_cdk_fusiformrh +smri_thick_cdk_ifplrh +smri_thick_cdk_iftmrh +smri_thick_cdk_ihcaterh +smri_thick_cdk_loccrh +smri_thick_cdk_lingualrh +smri_thick_cdk_mdtmrh +smri_thick_cdk_parahpalrh +smri_thick_cdk_paracnrh +smri_thick_cdk_periccrh +smri_thick_cdk_postcnrh +smri_thick_cdk_ptcaterh +smri_thick_cdk_precnrh +smri_thick_cdk_pcrh +smri_thick_cdk_suplrh +smri_thick_cdk_sutmrh +smri_thick_cdk_smrh +smri_thick_cdk_tmpolerh +smri_thick_cdk_trvtmrh +smri_thick_cdk_insularh 
+
+#WHITE MATTER 
+  #5.1 data table: mri_y_smr_vol_aseg.csv
+  #variable name(s: smri_vol_scs_cbwmatterlh, smri_vol_scs_crbwmatterlh, smri_vol_scs_hpuslh, smri_vol_scs_amygdalalh, smri_vol_scs_cbwmatterrh, smri_vol_scs_crbwmatterrh, smri_vol_scs_hpusrh, smri_vol_scs_amygdalarh, smri_vol_scs_wholeb, smri_vol_scs_intracranialv
+  #timepoint(s: baseline_year_1_arm_1, 2_year_follow_up_y_arm_1
+
+#total and mean WMV calculations
+smri_wmv_tot <- smri_vol_scs_cbwmatterlh + smri_vol_scs_crbwmatterlh + smri_vol_scs_cbwmatterrh + smri_vol_scs_crbwmatterrh
+smri_wmv_mean <- mri_vol_scs_cbwmatterlh + mri_vol_scs_crbwmatterlh + smri_vol_scs_cbwmatterrh + smri_vol_scs_crbwmatterrh/4
+
+#PUBERTY
+  #5.1 data table: ph_y_pds.csv
+  #variable name(s: pds_y_ss_female_category_2, pds_y_ss_male_category_2
+  #timepoint(s: 2_year_follow_up_y_arm_1
+  #note: this pulls it into two columns (1 for male, 1 for female --> need to combine into one column 
+```
+
+```{r database joining and cleanup}
+#after all variables imported, combine into one database and prepare to make wide
+#for ex: 
+db_all=left_join(db1, db2, by="src_subject_id", "eventname")
+
+#create shortened event names 
+db_all$event_sh[db_all$eventname == "baseline_year_1_arm_1"] <- 'b'
+db_all$event_sh[db_all$eventname == "2_year_follow_up_y_arm_1"] <- 'y2'
+db_all$event_sh[db$eventname == "3_year_follow_up_y_arm_1"] <- 'y3'
+
+#convert from long format to wide                                           #may need to concatenate and list all variables here
+db_wide = pivot_wider(db_all, id_cols = c(src_subject_id, names_from = event_sh, values_from = db_all))
+                                                       
+#calculate age difference between B and Y2 scans 
+db_wide$age_diff <- db_wide$interview_age_y2 - db_wide$interview_age_b
+
+#subset to only include those with scan 2 between 18 and 30 months of baseline scan 
+db_duration = db_wide[db_wide$age_diff>=18&db_wide$age_diff<=30,]
+table(db_wide$age_diff)
+table(db_duration$age_diff)
+
+#subset to exclude not passing QC at baseline or y2 scan 
+db_qc = db_duration[db_duration$imgincl_t1w_include_b == 1 & db_duration$imgincl_t1w_include_2yr == 1,]
+
+#run complete cases, as LME drops missing data 
+db_cc <- db_duration[complete.cases(db_duration),]
+View(db_cc)
+
+db <- write.csv(db_cc, "filepathgoeshere")
+```
+
+```{r percent change calculations}
+#MAIN ANALYSES
+  #percent change WMV (global only)
+  wmv_pct = ((smri_whole_wmv_tot_y2 - smri_whole_wmv_tot_b)/smri_whole_wmv_tot_b)*100
+  #Mean cortical thickness, global
+  cort_dsk_diff_pct <- ((smri_thick_cdk_mean_y2 - smri_thick_cdk_mean_b)/smri_thick_cdk_mean_b)*100
+  #Mean cortical thickness, left hemisphere
+  cort_dsk_Ldiff_pct <- ((smri_thick_cdk_meanlh_y2 - smri_thick_cdk_meanlh_b)/smri_thick_cdk_meanlh_b)*100
+  #Mean cortical thickness, right hemisphere
+  cort_dsk_Rdiff_pct <- ((smri_thick_cdk_meanrh_y2 - smri_thick_cdk_meanrh_b)/smri_thick_cdk_meanrh_b)*100
+
+#SUPPLEMENTAL ANALYSES: PREFRONTAL CORTEX ONLY 
+  #Sum prefrontal, global
+  pfc_glob_diff_pct <- ((pfc_glob_2yr - pfc_glob_b)/pfc_glob_b)*100
+  #Sum prefrontal, left hemisphere
+  pfcL_diff_pct <- ((pfcL_2yr - pfcL_b)/pfcL_b)*100
+  #Sum prefrontal, right hemisphere
+  pfcR_diff_pct <- ((pfcR_2yr - pfcR_b)/pfcR_b)*100
+
+#SUPPLEMENTAL ANALYSES: NON-PREFRONTAL CORTEX ONLY
+  #Sum non-prefrontal, global
+  NOpfc_glob_diff_pct <- ((NOpfc_glob_2yr - NOpfc_glob_b)/NOpfc_glob_b)*100
+  #Sum non-prefrontal, left hemisphere
+  NOpfcL_diff_pct <- ((NOpfcL_2yr - NOpfcL_b)/NOpfcL_b)*100
+  #Sum non-prefrontal, right hemisphere
+  NOpfcR_diff_pct <- ((NOpfcR_2yr - NOpfcR_b)/NOpfcR_b)*100
+```
+
+```{r descriptives}
+#descriptives for table 1
+table(db$demo_sex_v2_b)
+table(db$race_ethnicity_b)
+table(db$demo_comb_income_v2_b)
+table(db$demo_prim_b)
+table(db$demo_comb_income_v2_b)
+table(db$demo_prnt_ed_v2_b)
+describe(db$interview_age_b)
+describe(db$cbcl_y3)
+describe(db$bpm_y_scr_internal_r_y3)
+describe(db$wmv_pct_ch)
+describe(db$gct_pct_ch)
+describe(db$Rct_pct_ch)
+describe(db$Lct_pct_ch)
+```
+
+```{r cbcl analyses}
+#MAIN ANALYSES
+  #cbcl ~ wmv percent chg 
+  wmv=lmer(cbcl_y3 ~ wmv_pct_ch + cbcl_b + interview_age_y2 + demo_sex_v2_b + race_ethnicity_b + demo_prnt_ed_v2_b + (1|mri_info_deviceserialnumber_b/rel_family_id_b), data=db)
+  summary(wmv)
+  standardize(wmv)
+  r.squaredGLMM(wmv)
+  
+  #cbcl ~ global mean cort thickness percent chg 
+  gct=lmer(cbcl_y3 ~ gct_pct_ch  + cbcl_b + interview_age_y2 + demo_sex_v2_b + race_ethnicity_b + demo_prnt_ed_v2_b + (1|mri_info_deviceserialnumber_b/rel_family_id_b), data=db)
+  summary(gct)
+  standardize(gct)
+  r.squaredGLMM(gct)
+  
+  #cbcl ~ left  mean cort thickness percent chg 
+  Lct=lmer(cbcl_y3 ~ Lct_pct_ch  + cbcl_b + interview_age_y2 + demo_sex_v2_b + race_ethnicity_b + demo_prnt_ed_v2_b + (1|mri_info_deviceserialnumber_b/rel_family_id_b), data=db)
+  summary(Lct)
+  standardize(Lct)
+  r.squaredGLMM(Lct)
+  
+  #cbcl ~ right  mean cort thickness percent chg 
+  Rct=lmer(cbcl_y3 ~ Rct_pct_ch  + cbcl_b + interview_age_y2 + demo_sex_v2_b + race_ethnicity_b + demo_prnt_ed_v2_b + (1|mri_info_deviceserialnumber_b/rel_family_id_b), data=db)
+  summary(Rct)
+  standardize(Rct)
+  r.squaredGLMM(cort_RctR_b)
+
+  
+#STANDARDIZE FOR 95% CI'S 
+  #first standardize variables  
+  db$cbcl_y3.z = scale(db$cbcl_y3)
+  db$cbcl_b.z = scale(db$cbcl_b)
+  db$interview_age_y2.z = scale(db$interview_age_y2)
+  db$demo_sex_v2_b.z = scale(db$demo_sex_v2_b)
+  db$demo_prnt_ed_v2_b.z = scale(db$demo_prnt_ed_v2_b)
+  db$wmv_pct_ch.z =scale(db$wmv_pct_ch)
+  db$gct_pct_ch.z = scale(db$gct_pct_ch)
+  db$Lct_pct_ch.z = scale(db$Lct_pct_ch)
+  db$Rct_pct_ch.z = scale(db$Rct_pct_ch)
+    
+  #then rerun models with z-scores  
+  #Z cbcl ~ wmv pct chg
+  wmv.z=lmer(cbcl_y3.z ~ wmv_pct_ch.z + cbcl_b.z + interview_age_y2.z + demo_sex_v2_b.z + race_ethnicity_b + demo_prnt_ed_v2_b.z + (1|mri_info_deviceserialnumber_b/rel_family_id_b), data=db)
+  summary(wmv.z)
+  confint(wmv.z)
+  
+  #Z cbcl ~ global mean cort thickness percent chg 
+  gct.z=lmer(cbcl_y3.z ~ gct_pct_ch.z  + cbcl_b.z + interview_age_y2.z + demo_sex_v2_b.z + race_ethnicity_b + demo_prnt_ed_v2_b.z + (1|mri_info_deviceserialnumber_b/rel_family_id_b), data=db)
+  summary(gct.z)
+  confint(gct.z)
+  
+  #Z cbcl ~ left mean cort thickness percent chg 
+  Lct.z=lmer(cbcl_y3.z ~ Lct_pct_ch.z  + cbcl_b.z + interview_age_y2.z + demo_sex_v2_b.z + race_ethnicity_b + demo_prnt_ed_v2_b.z + (1|mri_info_deviceserialnumber_b/rel_family_id_b), data=db)
+  summary(Lct.z)
+  confint(Lct.z)
+
+  #Z cbcl ~ right mean cort thickness percent chg 
+  Rct.z=lmer(cbcl_y3.z ~ Rct_pct_ch.z  + cbcl_b.z + interview_age_y2.z + demo_sex_v2_b.z + race_ethnicity_b + demo_prnt_ed_v2_b.z + (1|mri_info_deviceserialnumber_b/rel_family_id_b), data=db)
+  summary(Rct.z)
+  confint(Rct.z)
+  
+#CHECK FOR INTERACTIONS  
+  #wmv*sex
+  wmv.sex=lmer(cbcl_y3 ~ wmv_pct_ch*demo_sex_v2_b + cbcl_b + interview_age_y2 + race_ethnicity_b + demo_prnt_ed_v2_b + (1|mri_info_deviceserialnumber_b/rel_family_id_b), data=db)
+  summary(wmv.sex)
+  
+  #global cort*sex
+  gct.sex=lmer(cbcl_y3 ~ gct_pct_ch*demo_sex_v2_b  + cbcl_b + interview_age_y2  + race_ethnicity_b + demo_prnt_ed_v2_b + (1|mri_info_deviceserialnumber_b/rel_family_id_b), data=db)
+  summary(gct.sex)
+  
+  #left cort*sex
+  Lct.sex=lmer(cbcl_y3 ~ Lct_pct_ch*demo_sex_v2_b  + cbcl_b + interview_age_y2  + race_ethnicity_b + demo_prnt_ed_v2_b + (1|mri_info_deviceserialnumber_b/rel_family_id_b), data=db)
+  summary(Lct.sex)
+  
+  #right cort*sex
+  Rct.sex=lmer(cbcl_y3 ~ Rct_pct_ch*demo_sex_v2_b  + cbcl_b + interview_age_y2  + race_ethnicity_b + demo_prnt_ed_v2_b + (1|mri_info_deviceserialnumber_b/rel_family_id_b), data=db)
+  summary(Rct.sex)
+  
+  #wmv*race/ethnicity
+  wmv.re=lmer(cbcl_y3 ~ wmv_pct_ch*race_ethnicity_b + cbcl_b + interview_age_y2 + demo_sex_v2_b + demo_prnt_ed_v2_b + (1|mri_info_deviceserialnumber_b/rel_family_id_b), data=db)
+  summary(wmv.re)
+  
+  #global cort*race/ethnicity
+  gct.re=lmer(cbcl_y3 ~ gct_pct_ch*race_ethnicity_b  + cbcl_b + interview_age_y2  + demo_sex_v2_b + demo_prnt_ed_v2_b + (1|mri_info_deviceserialnumber_b/rel_family_id_b), data=db)
+  summary(gct.re)
+  
+  #left cort*race/ethnicity
+  Lct.re=lmer(cbcl_y3 ~ Lct_pct_ch*race_ethnicity_b  + cbcl_b + interview_age_y2  + demo_sex_v2_b + demo_prnt_ed_v2_b + (1|mri_info_deviceserialnumber_b/rel_family_id_b), data=db)
+  summary(Lct.re)
+  
+  #right cort*race/ethnicity
+  Rct.re=lmer(cbcl_y3 ~ Rct_pct_ch*race_ethnicity_b  + cbcl_b + interview_age_y2  +  demo_sex_v2_b + demo_prnt_ed_v2_b + (1|mri_info_deviceserialnumber_b/rel_family_id_b), data=db)
+  summary(Rct.re)
+```
+
+```{r bpm sensitivity analyses}
+#MAIN ANALYSES
+  #bpm ~ wmv thickness percent chg 
+  wmv.bpm=lmer(bpm_y_scr_internal_r_y3 ~ wmv_pct_ch + interview_age_y2 + demo_sex_v2_b + race_ethnicity_b + demo_prnt_ed_v2_b + (1|mri_info_deviceserialnumber_b/rel_family_id_b), data=db)
+  summary(wmv.bpm)
+  standardize(wmv.bpm)
+  r.squaredGLMM(wmv.bpm)
+  
+  #bpm ~ global mean cort thickness percent chg 
+  gct.bpm=lmer(bpm_y_scr_internal_r_y3 ~ gct_pct_ch  + interview_age_y2 + demo_sex_v2_b + race_ethnicity_b + demo_prnt_ed_v2_b + (1|mri_info_deviceserialnumber_b/rel_family_id_b), data=db)
+  summary(gct.bpm)
+  standardize(gct.bpm)
+  r.squaredGLMM(gct.bpm)
+  
+  #bpm ~ left mean cort thickness percent chg 
+  Lct.bpm=lmer(bpm_y_scr_internal_r_y3 ~ Lct_pct_ch  + interview_age_y2 + demo_sex_v2_b + race_ethnicity_b + demo_prnt_ed_v2_b + (1|mri_info_deviceserialnumber_b/rel_family_id_b), data=db)
+  summary(Lct.bpm)
+  standardize(Lct.bpm)
+  r.squaredGLMM(Lct.bpm)
+  
+  #bpm ~ right mean cort thickness percent chg 
+  Rct.bpm=lmer(bpm_y_scr_internal_r_y3 ~ Rct_pct_ch  + interview_age_y2 + demo_sex_v2_b + race_ethnicity_b + demo_prnt_ed_v2_b + (1|mri_info_deviceserialnumber_b/rel_family_id_b), data=db)
+  summary(Rct.bpm)
+  standardize(Rct.bpm)
+  r.squaredGLMM(Rct.bpm)
+
+#STANDARDIZE FOR 95% CI'S 
+  #first standardize BPM variable  
+  db$bpm_y_scr_internal_r_y3.z = scale(db$bpm_y_scr_internal_r_y3)
+  
+  #then rerun models with z-scores 
+  #Z bpm ~ wmv percent chg
+  wmv.bpm.z=lmer(bpm_y_scr_internal_r_y3.z ~ wmv_pct_ch.z + interview_age_y2.z + demo_sex_v2_b.z + race_ethnicity_b + demo_prnt_ed_v2_b.z +
+(1|mri_info_deviceserialnumber_b/rel_family_id_b), data=db)
+  confint(wmv.bpm.z)
+  
+  #Z bpm ~ global mean cort thickness percent chg 
+  gct.bpm.z=lmer(bpm_y_scr_internal_r_y3.z ~ gct_pct_ch.z + interview_age_y2.z + demo_sex_v2_b.z + race_ethnicity_b + demo_prnt_ed_v2_b.z +
+(1|mri_info_deviceserialnumber_b/rel_family_id_b), data=db)
+  confint(gct.bpm.z)
+  
+  #Z bpm ~ left mean cort thickness percent chg 
+  Lct.bpm.z=lmer(bpm_y_scr_internal_r_y3.z ~ Lct_pct_ch.z + interview_age_y2.z + demo_sex_v2_b.z + race_ethnicity_b + demo_prnt_ed_v2_b.z +
+(1|mri_info_deviceserialnumber_b/rel_family_id_b), data=db)
+  confint(Lct.bpm.z)
+
+  #Z bpm ~ right mean cort thickness percent chg 
+  Rct.bpm.z=lmer(bpm_y_scr_internal_r_y3.z ~ Rct_pct_ch.z + interview_age_y2.z + demo_sex_v2_b.z + race_ethnicity_b + demo_prnt_ed_v2_b.z +
+(1|mri_info_deviceserialnumber_b/rel_family_id_b), data=db)
+  confint(Rct.bpm.z)
+```
+
+```{r prefrontal specificity analyses}
+#SPECIFICITY ANALYSIS USING CBCL AND PREFRONTAL CORTICAL BRAIN REGIONS ONLY 
+  #cbcl ~ global pfc percent chg
+  pfc.cbcl=lmer(cbcl_y3 ~ pfc_glob_diff_pct  + cbcl_b + interview_age_y2 + demo_sex_v2_b + race_ethnicity_b + demo_prnt_ed_v2_b + (1|mri_info_deviceserialnumber_b/rel_family_id_b), data=db)
+  summary(pfc.cbcl)
+  standardize(pfc.cbcl)
+  r.squaredGLMM(pfc.cbcl)
+  
+  #cbcl ~ left pfc percent chg
+  Lpfc.cbcl=lmer(cbcl_y3 ~ pfcL_diff_pct  + cbcl_b + interview_age_y2 + demo_sex_v2_b + race_ethnicity_b + demo_prnt_ed_v2_b + (1|mri_info_deviceserialnumber_b/rel_family_id_b), data=db)
+  summary(Lpfc.cbcl)
+  standardize(Lpfc.cbcl)
+  r.squaredGLMM(Lpfc.cbcl)
+  
+  #cbcl ~ right pfc percent chg
+  Rpfc.cbcl=lmer(cbcl_y3 ~ pfcR_diff_pct  + cbcl_b + interview_age_y2 + demo_sex_v2_b + race_ethnicity_b + demo_prnt_ed_v2_b + (1|mri_info_deviceserialnumber_b/rel_family_id_b), data=db)
+  summary(Rpfc.cbcl)
+  standardize(Rpfc.cbcl)
+  r.squaredGLMM(Rpfc.cbcl)
+
+#SPECIFICITY ANALYSIS USING BPM AND PREFRONTAL CORTICAL BRAIN REGIONS ONLY 
+  #bpm ~ global pfc percent chg
+  pfc.bpm=lmer(bpm_y_scr_internal_r_y3 ~ pfc_glob_diff_pct  + interview_age_y2 + demo_sex_v2_b + race_ethnicity_b + demo_prnt_ed_v2_b + (1|mri_info_deviceserialnumber_b/rel_family_id_b), data= db)
+  summary(pfc.bpm)
+  standardize(pfc.bpm)
+  r.squaredGLMM(pfc.bpm)
+  
+  #bpm ~ global pfc percent chg
+  Lpfc.bpm=lmer(bpm_y_scr_internal_r_y3 ~ pfcL_diff_pct  + interview_age_y2 + demo_sex_v2_b + race_ethnicity_b + demo_prnt_ed_v2_b + (1|mri_info_deviceserialnumber_b/rel_family_id_b), data=db)
+  summary(Lpfc.bpm)
+  standardize(Lpfc.bpm)
+  r.squaredGLMM(Lpfc.bpm)
+
+#bpm ~ global pfc percent chg
+  Rpfc.bpm=lmer(bpm_y_scr_internal_r_y3 ~ pfcR_diff_pct  + interview_age_y2 + demo_sex_v2_b + race_ethnicity_b + demo_prnt_ed_v2_b + (1|mri_info_deviceserialnumber_b/rel_family_id_b), data=db)
+  summary(Rpfc.bpm)
+  standardize(Rpfc.bpm)
+  r.squaredGLMM(Rpfc.bpm)
+
+#CHECK FOR INTERACTIONS (CBCL ONLY
+  #global pfc*sex
+  pfc.cbcl.sex=lmer(cbcl_y3 ~ pfc_glob_diff_pct*demo_sex_v2_b  + cbcl_b + interview_age_y2  + race_ethnicity_b + demo_prnt_ed_v2_b + (1|mri_info_deviceserialnumber_b/rel_family_id_b), data=db)
+  summary(pfc.cbcl.sex)
+  
+  #left pfc*sex
+  Lpfc.cbcl.sex=lmer(cbcl_y3 ~ pfcL_diff_pct*demo_sex_v2_b  + cbcl_b + interview_age_y2  + race_ethnicity_b + demo_prnt_ed_v2_b + (1|mri_info_deviceserialnumber_b/rel_family_id_b), data=db)
+  summary(Lpfc.cbcl.sex)
+  
+  #right pfc*sex
+  Rpfc.cbcl.sex=lmer(cbcl_y3 ~ pfcR_diff_pct*demo_sex_v2_b  + cbcl_b + interview_age_y2  + race_ethnicity_b + demo_prnt_ed_v2_b + (1|mri_info_deviceserialnumber_b/rel_family_id_b), data=db)
+  summary(Rpfc.cbcl.sex)
+
+  #global pfc*race/ethnicity
+  pfc.cbcl.re=lmer(cbcl_y3 ~ pfc_glob_diff_pct*race_ethnicity_b  + cbcl_b + interview_age_y2  + demo_sex_v2_b  + demo_prnt_ed_v2_b + (1|mri_info_deviceserialnumber_b/rel_family_id_b), data=db)
+  summary(pfc.cbcl.re)
+  
+  #left pfc*race/ethnicity
+  Lpfc.cbcl.re=lmer(cbcl_y3 ~ pfcL_diff_pct*race_ethnicity_b  + cbcl_b + interview_age_y2  + demo_sex_v2_b + demo_prnt_ed_v2_b + (1|mri_info_deviceserialnumber_b/rel_family_id_b), data=db)
+  summary(Lpfc.cbcl.re)
+  
+  #right pfc*race/ethnicity
+  Rpfc.cbcl.re=lmer(cbcl_y3 ~ pfcR_diff_pct*race_ethnicity_b  + cbcl_b + interview_age_y2  +  demo_sex_v2_b+ demo_prnt_ed_v2_b + (1|mri_info_deviceserialnumber_b/rel_family_id_b), data=db)
+  summary(Rpfc.cbcl.re)
+  
+#STANDARDIZE FOR 95% CI'S 
+  #first standardize PFC variables  
+  db$pfc_glob_diff_pct.z = scale(db$pfc_glob_diff_pct)
+  db$pfcL_diff_pct.z = scale(db$pfcL_diff_pct)
+  db$pfcR_diff_pct.z = scale(db$pfcR_diff_pct)
+
+#then rerun models with z-scores 
+  #Z cbcl ~ global pfc percent chg
+  pfc.cbcl.z=lmer(cbcl_y3.z ~ pfc_glob_diff_pct.z  + cbcl_b.z + interview_age_y2.z + demo_sex_v2_b.z + race_ethnicity_b + demo_prnt_ed_v2_b.z + (1|mri_info_deviceserialnumber_b/rel_family_id_b), data=db)
+  confint(pfc.cbcl.z)
+  
+  #Z cbcl ~ left pfc percent chg
+  Lpfc.cbcl.z=lmer(cbcl_y3.z ~  pfcL_diff_pct.z + cbcl_b.z + interview_age_y2.z + demo_sex_v2_b.z + race_ethnicity_b + demo_prnt_ed_v2_b.z + (1|mri_info_deviceserialnumber_b/rel_family_id_b), data=db)
+  confint(Lpfc.cbcl.z)
+  
+  #Z cbcl ~ right pfc percent chg
+  Rpfc.cbcl.z=lmer(cbcl_y3.z ~  pfcR_diff_pct.z + cbcl_b.z + interview_age_y2.z + demo_sex_v2_b.z + race_ethnicity_b + demo_prnt_ed_v2_b.z + (1|mri_info_deviceserialnumber_b/rel_family_id_b), data=db)
+  confint(Rpfc.cbcl.z)
+
+  #Z bpm ~ global pfc percent chg
+  pfc.bpm.z=lmer(bpm_y_scr_internal_r_y3.z ~ pfc_glob_diff_pct.z  + interview_age_y2.z + demo_sex_v2_b.z + race_ethnicity_b + demo_prnt_ed_v2_b.z + (1|mri_info_deviceserialnumber_b/rel_family_id_b), data= db)
+  confint(pfc.bpm.z)
+  
+  #Z bpm ~ left pfc percent chg
+  Lpfc.bpm.z=lmer(bpm_y_scr_internal_r_y3.z ~ pfcL_diff_pct.z  + interview_age_y2.z + demo_sex_v2_b.z + race_ethnicity_b + demo_prnt_ed_v2_b.z + (1|mri_info_deviceserialnumber_b/rel_family_id_b), data=db)
+  confint(Lpfc.bpm.z)
+  
+  #Z bpm ~ right pfc percent chg
+  Rpfc.bpm.z=lmer(bpm_y_scr_internal_r_y3.z ~ pfcR_diff_pct.z  + interview_age_y2.z + demo_sex_v2_b.z + race_ethnicity_b + demo_prnt_ed_v2_b.z + (1|mri_info_deviceserialnumber_b/rel_family_id_b), data=db)
+  confint(Rpfc.bpm.z)
+```
+
+```{r non prefrontal specificity analyses}
+#SPECIFICITY ANALYSIS USING CBCL AND NON PREFRONTAL CORTICAL BRAIN REGIONS ONLY 
+  #cbcl ~ global non pfc percent chg
+  NO.pfc.cbcl=lmer(cbcl_y3 ~ NOpfc_glob_diff_pct  + cbcl_b + interview_age_y2 + demo_sex_v2_b + race_ethnicity_b + demo_prnt_ed_v2_b + (1|mri_info_deviceserialnumber_b/rel_family_id_b), data=db)
+  summary(NO.pfc.cbcl)
+  standardize(NO.pfc.cbcl)
+  r.squaredGLMM(NO.pfc.cbcl)
+  
+  #cbcl ~ left non pfc percent chg
+  NO.Lpfc.cbcl=lmer(cbcl_y3 ~ NOpfcL_diff_pct  + cbcl_b + interview_age_y2 + demo_sex_v2_b + race_ethnicity_b + demo_prnt_ed_v2_b + (1|mri_info_deviceserialnumber_b/rel_family_id_b), data=db)
+  summary(NO.Lpfc.cbcl)
+  standardize(NO.Lpfc.cbcl)
+  r.squaredGLMM(NO.Lpfc.cbcl)
+  
+  #cbcl ~ right non pfc percent chg
+  NO.Rpfc.cbcl=lmer(cbcl_y3 ~ NOpfcR_diff_pct  + cbcl_b + interview_age_y2 + demo_sex_v2_b + race_ethnicity_b + demo_prnt_ed_v2_b + (1|mri_info_deviceserialnumber_b/rel_family_id_b), data=db)
+  summary(NO.Rpfc.cbcl)
+  standardize(NO.Rpfc.cbcl)
+  r.squaredGLMM(NO.Rpfc.cbcl)
+
+#SPECIFICITY ANALYSIS USING BPM AND NON PREFRONTAL CORTICAL BRAIN REGIONS ONLY 
+  #bpm ~ global non pfc percent chg
+  NO.pfc.bpm=lmer(bpm_y_scr_internal_r_y3 ~ NOpfc_glob_diff_pct  + interview_age_y2 + demo_sex_v2_b + race_ethnicity_b + demo_prnt_ed_v2_b + (1|mri_info_deviceserialnumber_b/rel_family_id_b), data= db)
+  summary(NO.pfc.bpm)
+  standardize(NO.pfc.bpm)
+  r.squaredGLMM(NO.pfc.bpm)
+  
+  #bpm ~ left non pfc percent chg
+  NO.Lpfc.bpm=lmer(bpm_y_scr_internal_r_y3 ~ NOpfcL_diff_pct  + interview_age_y2 + demo_sex_v2_b + race_ethnicity_b + demo_prnt_ed_v2_b + (1|mri_info_deviceserialnumber_b/rel_family_id_b), data=db)
+  summary(NO.Lpfc.bpm)
+  standardize(NO.Lpfc.bpm)
+  r.squaredGLMM(NO.Lpfc.bpm)
+  
+  #bpm ~ right non pfc percent chg
+  NO.Rpfc.bpm=lmer(bpm_y_scr_internal_r_y3 ~ NOpfcR_diff_pct  + interview_age_y2 + demo_sex_v2_b + race_ethnicity_b + demo_prnt_ed_v2_b + (1|mri_info_deviceserialnumber_b/rel_family_id_b), data=db)
+  summary(NO.Rpfc.bpm)
+  standardize(NO.Rpfc.bpm)
+  r.squaredGLMM(NO.Rpfc.bpm)
+
+#CHECK FOR INTERACTIONS (CBCL ONLY
+  #global non pfc*sex
+  NOpfc.cbcl.sex=lmer(cbcl_y3 ~ NOpfc_glob_diff_pct*demo_sex_v2_b  + cbcl_b + interview_age_y2  + race_ethnicity_b + demo_prnt_ed_v2_b + (1|mri_info_deviceserialnumber_b/rel_family_id_b), data=db)
+  summary(NOpfc.cbcl.sex)
+  
+  #left non pfc*sex
+  NOLpfc.cbcl.sex=lmer(cbcl_y3 ~ NOpfcL_diff_pct*demo_sex_v2_b  + cbcl_b + interview_age_y2  + race_ethnicity_b + demo_prnt_ed_v2_b + (1|mri_info_deviceserialnumber_b/rel_family_id_b), data=db)
+  summary(NOLpfc.cbcl.sex)
+  
+  #right non pfc*sex
+  NORpfc.cbcl.sex=lmer(cbcl_y3 ~ NOpfcR_diff_pct*demo_sex_v2_b  + cbcl_b + interview_age_y2  + race_ethnicity_b + demo_prnt_ed_v2_b + (1|mri_info_deviceserialnumber_b/rel_family_id_b), data=db)
+  summary(NORpfc.cbcl.sex)
+
+  #global non pfc*race/ethnicity
+  NOpfc.cbcl.re=lmer(cbcl_y3 ~ NOpfc_glob_diff_pct*race_ethnicity_b  + cbcl_b + interview_age_y2  + demo_sex_v2_b  + demo_prnt_ed_v2_b + (1|mri_info_deviceserialnumber_b/rel_family_id_b), data=db)
+  summary(NOpfc.cbcl.re)
+  
+  #left non pfc*race/ethnicity
+  NOLpfc.cbcl.re=lmer(cbcl_y3 ~ NOpfcL_diff_pct*race_ethnicity_b  + cbcl_b + interview_age_y2  + demo_sex_v2_b + demo_prnt_ed_v2_b + (1|mri_info_deviceserialnumber_b/rel_family_id_b), data=db)
+  summary(NOLpfc.cbcl.re)
+  
+  #right non pfc*race/ethnicity
+  NORpfc.cbcl.re=lmer(cbcl_y3 ~ NOpfcR_diff_pct*race_ethnicity_b  + cbcl_b + interview_age_y2  +  demo_sex_v2_b+ demo_prnt_ed_v2_b + (1|mri_info_deviceserialnumber_b/rel_family_id_b), data=db)
+  summary(NORpfc.cbcl.re)
+  
+#STANDARDIZE FOR 95% CI'S 
+  #first standardize non-PFC variables  
+  db$NOpfc_glob_diff_pct.z = scale(db$NOpfc_glob_diff_pct)
+  db$NOpfcL_diff_pct.z = scale(db$NOpfcL_diff_pct)
+  db$NOpfcR_diff_pct.z = scale(db$NOpfcR_diff_pct)
+
+  #then rerun models with z-scores 
+  #Z cbcl ~ global non pfc percent chg  
+  NOpfc.cbcl.z=lmer(cbcl_y3.z ~ NOpfc_glob_diff_pct.z  + cbcl_b.z + interview_age_y2.z + demo_sex_v2_b.z + race_ethnicity_b + demo_prnt_ed_v2_b.z + (1|mri_info_deviceserialnumber_b/rel_family_id_b), data=db)
+  confint(NOpfc.cbcl.z)
+  
+  #Z cbcl ~ left non pfc percent chg  
+  NO.Lpfc.cbcl.z=lmer(cbcl_y3.z ~ NOpfcL_diff_pct.z  + cbcl_b.z + interview_age_y2.z + demo_sex_v2_b.z + race_ethnicity_b + demo_prnt_ed_v2_b.z + (1|mri_info_deviceserialnumber_b/rel_family_id_b), data=db)
+  confint(NO.Lpfc.cbcl.z)
+  
+  #Z cbcl ~ right non pfc percent chg  
+  NO.Rpfc.cbcl.z=lmer(cbcl_y3.z ~ NOpfcR_diff_pct.z  + cbcl_b.z + interview_age_y2.z + demo_sex_v2_b.z + race_ethnicity_b + demo_prnt_ed_v2_b.z + (1|mri_info_deviceserialnumber_b/rel_family_id_b), data=db)
+  confint(NO.Rpfc.cbcl.z)
+  
+  #Z bpm ~ global non pfc percent chg 
+  NO.pfc.bpm.z=lmer(bpm_y_scr_internal_r_y3.z ~ NOpfc_glob_diff_pct.z  + interview_age_y2.z + demo_sex_v2_b.z + race_ethnicity_b + demo_prnt_ed_v2_b.z + (1|mri_info_deviceserialnumber_b/rel_family_id_b), data=db)
+  confint(NO.pfc.bpm.z)
+  
+  #Z bpm ~ global non pfc percent chg 
+  NO.Lpfc.bpm.z=lmer(bpm_y_scr_internal_r_y3.z ~ NOpfcL_diff_pct.z  + interview_age_y2.z + demo_sex_v2_b.z + race_ethnicity_b + demo_prnt_ed_v2_b.z + (1|mri_info_deviceserialnumber_b/rel_family_id_b), data=db)
+  confint(NO.Lpfc.bpm.z)
+  
+  #Z bpm ~ global non pfc percent chg 
+  NO.Rpfc.bpm.z=lmer(bpm_y_scr_internal_r_y3.z ~ NOpfcR_diff_pct.z  + interview_age_y2.z + demo_sex_v2_b.z + race_ethnicity_b + demo_prnt_ed_v2_b.z + (1|mri_info_deviceserialnumber_b/rel_family_id_b), data=db)
+  confint(NO.Rpfc.bpm.z)   
+```
+
+```{r pubertal development analyses}
+#include Pubertal Development Survey (pre-defined ABCD sum scores based on sex at birth
+#REDO MAIN ANALYSES SWAPPING PDS SCORE AT YEAR 2 INSTEAD OF AGE AT YEAR 2 COVARIATE
+  #cbcl ~ wmv percent chg with pds
+  wmv.pds=lmer(cbcl_y3 ~ wmv_pct_ch + cbcl_b + pds_2yr + demo_sex_v2_b + race_ethnicity_b + demo_prnt_ed_v2_b + (1|mri_info_deviceserialnumber_b/rel_family_id_b), data=db)
+  summary(wmv.pds)
+  standardize(wmv.pds)
+  r.squaredGLMM(wmv.pds)
+  
+  #cbcl ~ global cort thickness percent chg with pds
+  gct.pds=lmer(cbcl_y3 ~ gct_pct_ch  + cbcl_b + pds_2yr + demo_sex_v2_b + race_ethnicity_b + demo_prnt_ed_v2_b + (1|mri_info_deviceserialnumber_b/rel_family_id_b), data=db)
+  summary(gct.pds)
+  standardize(gct.pds)
+  r.squaredGLMM(gct.pds)
+  
+  #cbcl ~ left cort thickness percent chg with pds
+  Lct.pds=lmer(cbcl_y3 ~ Lct_pct_ch  + cbcl_b + pds_2yr + demo_sex_v2_b + race_ethnicity_b + demo_prnt_ed_v2_b + (1|mri_info_deviceserialnumber_b/rel_family_id_b), data=db)
+  summary(Lct.pds)
+  standardize(Lct.pds)
+  r.squaredGLMM(Lct.pds)
+  
+  #cbcl ~ right cort thickness percent chg with pds
+  Rct.pds=lmer(cbcl_y3 ~ Rct_pct_ch  + cbcl_b + pds_2yr + demo_sex_v2_b + race_ethnicity_b + demo_prnt_ed_v2_b + (1|mri_info_deviceserialnumber_b/rel_family_id_b), data=db)
+  summary(Rct.pds)
+  standardize(Rct.pds)
+  r.squaredGLMM(Rct.pds)
+
+#REDO SENSITIVITY (BPM ANALYSES SWAPPING PDS SCORE AT YEAR 2 INSTEAD OF AGE AT YEAR 2 COVARIATE
+  #bpm ~ wmv percent chg with pds
+  wmv.bpm.pds=lmer(bpm_y_scr_internal_r_y3 ~ wmv_pct_ch + pds_2yr + demo_sex_v2_b + race_ethnicity_b + demo_prnt_ed_v2_b + (1|mri_info_deviceserialnumber_b/rel_family_id_b), data=db)
+  summary(wmv.bpm.pds)
+  standardize(wmv.bpm.pds)
+  r.squaredGLMM(wmv.bpm.pds)
+  
+  #bpm ~ global cort thickness percent chg with pds
+  gct.bpm.pds=lmer(bpm_y_scr_internal_r_y3 ~ gct_pct_ch  + pds_2yr + demo_sex_v2_b + race_ethnicity_b + demo_prnt_ed_v2_b + (1|mri_info_deviceserialnumber_b/rel_family_id_b), data=db)
+  summary(gct.bpm.pds)
+  standardize(gct.bpm.pds)
+  r.squaredGLMM(gct.bpm.pds)
+  
+  #bpm ~ left cort thickness percent chg with pds
+  Lct.bpm.pds=lmer(bpm_y_scr_internal_r_y3 ~ Lct_pct_ch  + pds_2yr + demo_sex_v2_b + race_ethnicity_b + demo_prnt_ed_v2_b + (1|mri_info_deviceserialnumber_b/rel_family_id_b), data=db)
+  summary(Lct.bpm.pds)
+  standardize(Lct.bpm.pds)
+  r.squaredGLMM(Lct.bpm.pds)
+  
+  #bpm ~ right cort thickness percent chg with pds
+  Rct.bpm.pds=lmer(bpm_y_scr_internal_r_y3 ~ Rct_pct_ch  + pds_2yr + demo_sex_v2_b + race_ethnicity_b + demo_prnt_ed_v2_b + (1|mri_info_deviceserialnumber_b/rel_family_id_b), data=db)
+  summary(Rct.bpm.pds)
+  standardize(Rct.bpm.pds)
+  r.squaredGLMM(Rct.bpm.pds)
+
+#STANDARDIZE FOR 95% CI'S 
+  #first standardize variables  
+  db$pds_y2.z = scale(db$pds_y2)
+    
+  #then rerun models with z-scores  
+ #Z cbcl ~ wmv pct chg with pds
+  wmv.pds.z=lmer(cbcl_y3.z ~ wmv_pct_ch.z + cbcl_b.z + pds_2yr.z + demo_sex_v2_b.z + race_ethnicity_b + demo_prnt_ed_v2_b.z + (1|mri_info_deviceserialnumber_b/rel_family_id_b), data=db)
+  confint(wmv.pds.z)
+  
+  #Z cbcl ~ global mean cort thickness percent chg with pds
+  gct.pds.z=lmer(cbcl_y3.z ~ gct_pct_ch.z  + cbcl_b.z + pds_2yr.z + demo_sex_v2_b.z + race_ethnicity_b + demo_prnt_ed_v2_b.z + (1|mri_info_deviceserialnumber_b/rel_family_id_b), data=db)
+  confint(gct.pds.z)
+  
+  #Z cbcl ~ left  mean cort thickness percent chg with pds
+  Lct.pds.z=lmer(cbcl_y3.z ~ Lct_pct_ch.z  + cbcl_b.z + pds_2yr.z + demo_sex_v2_b.z + race_ethnicity_b + demo_prnt_ed_v2_b.z + (1|mri_info_deviceserialnumber_b/rel_family_id_b), data=db)
+  confint(Lct.pds.z)
+
+  #Z cbcl ~ right  mean cort thickness percent chg with pds
+  Rct.pds.z=lmer(cbcl_y3.z ~ Rct_pct_ch.z  + cbcl_b.z + pds_2yr.z + demo_sex_v2_b.z + race_ethnicity_b + demo_prnt_ed_v2_b.z + (1|mri_info_deviceserialnumber_b/rel_family_id_b), data=db)
+  confint(Rct.pds.z)
+
+#Z bpm ~ wmv percent chg
+  wmv.bpm.pds.z=lmer(bpm_y_scr_internal_r_y3.z ~ wmv_pct_ch.z + pds_2yr.z + demo_sex_v2_b.z + race_ethnicity_b + demo_prnt_ed_v2_b.z +
+(1|mri_info_deviceserialnumber_b/rel_family_id_b), data=db)
+  confint(wmv.bpm.pds.z)
+  
+  #Z bpm ~ global mean cort thickness percent chg 
+  gct.bpm.pds.z=lmer(bpm_y_scr_internal_r_y3.z ~ gct_pct_ch.z + pds_2yr.z + demo_sex_v2_b.z + race_ethnicity_b + demo_prnt_ed_v2_b.z +
+(1|mri_info_deviceserialnumber_b/rel_family_id_b), data=db)
+  confint(gct.bpm.pds.z)
+  
+  #Z bpm ~ left mean cort thickness percent chg 
+  Lct.bpm.pds.z=lmer(bpm_y_scr_internal_r_y3.z ~ Lct_pct_ch.z + pds_2yr.z + demo_sex_v2_b.z + race_ethnicity_b + demo_prnt_ed_v2_b.z +
+(1|mri_info_deviceserialnumber_b/rel_family_id_b), data=db)
+  confint(Lct.bpm.pds.z)
+
+  #Z bpm ~ right mean cort thickness percent chg 
+  Rct.bpm.pds.z=lmer(bpm_y_scr_internal_r_y3.z ~ Rct_pct_ch.z + pds_2yr.z + demo_sex_v2_b.z + race_ethnicity_b + demo_prnt_ed_v2_b.z +
+(1|mri_info_deviceserialnumber_b/rel_family_id_b), data=db)
+  confint(Rct.bpm.pds.z)
+```
